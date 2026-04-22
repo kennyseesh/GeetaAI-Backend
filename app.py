@@ -3,9 +3,6 @@ import json
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from google import genai
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
 
 app = Flask(__name__)
 CORS(app)
@@ -16,12 +13,6 @@ CORS(app)
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 # =========================
-# MODEL
-# =========================
-print("🔄 Loading model...")
-model = SentenceTransformer('all-MiniLM-L6-v2')
-
-# =========================
 # LOAD JSON DATA
 # =========================
 print("🔄 Loading JSON data...")
@@ -29,12 +20,7 @@ print("🔄 Loading JSON data...")
 with open("shlokas.json", "r", encoding="utf-8") as f:
     data = json.load(f)
 
-meanings = [row['meaning'] for row in data]
-
-print("🔄 Creating embeddings...")
-embeddings = model.encode(meanings)
-
-print("✅ Backend Ready!")
+print(f"✅ Loaded {len(data)} shlokas")
 
 # =========================
 # RULES
@@ -53,35 +39,35 @@ def detect_concepts(user_input):
     return scores
 
 # =========================
-# HYBRID SEARCH
+# LIGHTWEIGHT SEARCH (NO ML)
 # =========================
 def get_best(user_input):
-    user_embedding = model.encode([user_input])
-    similarities = cosine_similarity(user_embedding, embeddings)[0]
-
+    user_input = user_input.lower()
     rule_scores = detect_concepts(user_input)
 
-    best_score = -1
     best_row = None
+    best_score = -1
 
-    for i, row in enumerate(data):
-        semantic = similarities[i]
-
-        row_concepts = [
+    for row in data:
+        concepts = [
             c.strip().lower()
             for c in (row.get('concept') or "").split(",")
             if c
         ]
 
-        rule = sum(1 for key in rule_scores if key in row_concepts)
+        # rule score
+        rule = sum(1 for key in rule_scores if key in concepts)
 
-        final = (0.6 * semantic) + (0.4 * rule)
+        # keyword match bonus
+        keyword_bonus = sum(1 for word in user_input.split() if word in concepts)
 
-        if final > best_score:
-            best_score = final
+        final_score = rule + keyword_bonus
+
+        if final_score > best_score:
+            best_score = final_score
             best_row = row
 
-    return best_row
+    return best_row if best_row else data[0]
 
 # =========================
 # LLM RESPONSE
@@ -132,8 +118,8 @@ def chat():
 
         guidance = generate_guidance(
             user_input,
-            result['shloka'],
-            result['meaning']
+            result.get('shloka', ''),
+            result.get('meaning', '')
         )
 
         return jsonify({
