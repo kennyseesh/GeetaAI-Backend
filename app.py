@@ -4,23 +4,43 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from google import genai
 
+print("🚀 App starting...")
+
 app = Flask(__name__)
 CORS(app)
 
 # =========================
-# GEMINI (SECURE)
+# GEMINI (SAFE INIT)
 # =========================
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+api_key = os.getenv("GEMINI_API_KEY")
+print("🔑 API KEY PRESENT:", bool(api_key))
+
+try:
+    client = genai.Client(api_key=api_key) if api_key else None
+    print("✅ Gemini initialized")
+except Exception as e:
+    print("❌ Gemini init error:", e)
+    client = None
 
 # =========================
-# LOAD JSON DATA
+# LOAD JSON DATA (SAFE)
 # =========================
 print("🔄 Loading JSON data...")
 
-with open("shlokas.json", "r", encoding="utf-8") as f:
-    data = json.load(f)
+data = []
 
-print(f"✅ Loaded {len(data)} shlokas")
+try:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(BASE_DIR, "shlokas.json")
+
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    print(f"✅ Loaded {len(data)} shlokas")
+
+except Exception as e:
+    print("❌ JSON LOAD ERROR:", e)
+    data = []
 
 # =========================
 # RULES
@@ -39,9 +59,12 @@ def detect_concepts(user_input):
     return scores
 
 # =========================
-# LIGHTWEIGHT SEARCH (NO ML)
+# LIGHT SEARCH
 # =========================
 def get_best(user_input):
+    if not data:
+        return None
+
     user_input = user_input.lower()
     rule_scores = detect_concepts(user_input)
 
@@ -55,10 +78,7 @@ def get_best(user_input):
             if c
         ]
 
-        # rule score
         rule = sum(1 for key in rule_scores if key in concepts)
-
-        # keyword match bonus
         keyword_bonus = sum(1 for word in user_input.split() if word in concepts)
 
         final_score = rule + keyword_bonus
@@ -73,6 +93,9 @@ def get_best(user_input):
 # LLM RESPONSE
 # =========================
 def generate_guidance(user_input, shloka, meaning):
+    if not client:
+        return "AI service not available (missing API key)."
+
     try:
         prompt = f"""
 User problem:
@@ -99,7 +122,18 @@ Explain simply and give practical advice in under 100 words.
         return "AI guidance temporarily unavailable."
 
 # =========================
-# API ROUTE
+# HEALTH CHECK ROUTE
+# =========================
+@app.route("/")
+def home():
+    return jsonify({
+        "status": "running",
+        "data_loaded": len(data),
+        "gemini": bool(client)
+    })
+
+# =========================
+# CHAT ROUTE
 # =========================
 @app.route("/chat", methods=["POST"])
 def chat():
