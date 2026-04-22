@@ -1,0 +1,4 @@
+gita-ai-frontend/
+__pycache__/
+*.pyc
+.env
