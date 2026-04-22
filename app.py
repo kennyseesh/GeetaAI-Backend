@@ -10,7 +10,7 @@ app = Flask(__name__)
 CORS(app)
 
 # =========================
-# GEMINI (SAFE INIT)
+# GEMINI INIT
 # =========================
 api_key = os.getenv("GEMINI_API_KEY")
 print("🔑 API KEY PRESENT:", bool(api_key))
@@ -21,13 +21,12 @@ if api_key:
         client = genai.Client(api_key=api_key)
         print("✅ Gemini initialized")
     except Exception as e:
-        print("❌ Gemini init error:", str(e))
-        client = None
+        print("❌ Gemini init error:", repr(e))
 else:
     print("❌ No API key found")
 
 # =========================
-# LOAD JSON DATA (SAFE)
+# LOAD JSON
 # =========================
 print("🔄 Loading JSON data...")
 
@@ -43,8 +42,7 @@ try:
     print(f"✅ Loaded {len(data)} shlokas")
 
 except Exception as e:
-    print("❌ JSON LOAD ERROR:", str(e))
-    data = []
+    print("❌ JSON LOAD ERROR:", repr(e))
 
 # =========================
 # RULES
@@ -63,7 +61,7 @@ def detect_concepts(user_input):
     return scores
 
 # =========================
-# LIGHT SEARCH
+# SEARCH
 # =========================
 def get_best(user_input):
     if not data:
@@ -85,16 +83,16 @@ def get_best(user_input):
         rule = sum(1 for key in rule_scores if key in concepts)
         keyword_bonus = sum(1 for word in user_input.split() if word in concepts)
 
-        final_score = rule + keyword_bonus
+        score = rule + keyword_bonus
 
-        if final_score > best_score:
-            best_score = final_score
+        if score > best_score:
+            best_score = score
             best_row = row
 
     return best_row if best_row else data[0]
 
 # =========================
-# GEMINI RESPONSE (FIXED)
+# GEMINI (FINAL FIX)
 # =========================
 def generate_guidance(user_input, shloka, meaning):
     if not client:
@@ -115,30 +113,35 @@ Explain simply and give practical advice in under 100 words.
 """
 
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-2.0-flash",
             contents=prompt
         )
 
-        # ✅ SAFE EXTRACTION
-        try:
-            if hasattr(response, "text") and response.text:
-                return response.text
-        except Exception:
-            pass
+        print("🔍 RAW RESPONSE:", response)
 
+        # ✅ METHOD 1 (best case)
+        if hasattr(response, "text") and response.text:
+            return response.text.strip()
+
+        # ✅ METHOD 2 (fallback parsing)
         try:
-            return response.candidates[0].content.parts[0].text
-        except Exception as parse_error:
-            print("❌ Parsing Error:", str(parse_error))
-            print("🔍 Raw response:", response)
-            return "AI guidance parsing failed."
+            candidates = response.candidates
+            if candidates and len(candidates) > 0:
+                parts = candidates[0].content.parts
+                if parts and len(parts) > 0:
+                    return parts[0].text.strip()
+        except Exception as parse_err:
+            print("❌ Parsing error:", repr(parse_err))
+
+        # ❌ if nothing works
+        return "AI returned empty response."
 
     except Exception as e:
-        print("❌ Gemini Error:", str(e))
-        return "AI guidance temporarily unavailable."
+        print("❌ GEMINI FULL ERROR:", repr(e))
+        return f"AI error: {str(e)}"
 
 # =========================
-# HEALTH CHECK
+# HEALTH
 # =========================
 @app.route("/")
 def home():
@@ -149,17 +152,17 @@ def home():
     })
 
 # =========================
-# CHAT ROUTE
+# CHAT
 # =========================
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
-        data_json = request.get_json()
+        body = request.get_json()
 
-        if not data_json or "message" not in data_json:
+        if not body or "message" not in body:
             return jsonify({"error": "Invalid request"}), 400
 
-        user_input = data_json["message"]
+        user_input = body["message"]
 
         result = get_best(user_input)
 
@@ -168,22 +171,22 @@ def chat():
 
         guidance = generate_guidance(
             user_input,
-            result.get('shloka', ''),
-            result.get('meaning', '')
+            result.get("shloka", ""),
+            result.get("meaning", "")
         )
 
         return jsonify({
-            "shloka": result.get('shloka', ''),
-            "meaning": result.get('meaning', ''),
+            "shloka": result.get("shloka", ""),
+            "meaning": result.get("meaning", ""),
             "guidance": guidance
         })
 
     except Exception as e:
-        print("❌ Server Error:", str(e))
+        print("❌ SERVER ERROR:", repr(e))
         return jsonify({"error": "Server failed"}), 500
 
 # =========================
-# RUN SERVER
+# RUN
 # =========================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
