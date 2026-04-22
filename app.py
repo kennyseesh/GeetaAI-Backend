@@ -15,12 +15,16 @@ CORS(app)
 api_key = os.getenv("GEMINI_API_KEY")
 print("🔑 API KEY PRESENT:", bool(api_key))
 
-try:
-    client = genai.Client(api_key=api_key) if api_key else None
-    print("✅ Gemini initialized")
-except Exception as e:
-    print("❌ Gemini init error:", e)
-    client = None
+client = None
+if api_key:
+    try:
+        client = genai.Client(api_key=api_key)
+        print("✅ Gemini initialized")
+    except Exception as e:
+        print("❌ Gemini init error:", str(e))
+        client = None
+else:
+    print("❌ No API key found")
 
 # =========================
 # LOAD JSON DATA (SAFE)
@@ -39,7 +43,7 @@ try:
     print(f"✅ Loaded {len(data)} shlokas")
 
 except Exception as e:
-    print("❌ JSON LOAD ERROR:", e)
+    print("❌ JSON LOAD ERROR:", str(e))
     data = []
 
 # =========================
@@ -90,7 +94,7 @@ def get_best(user_input):
     return best_row if best_row else data[0]
 
 # =========================
-# LLM RESPONSE
+# GEMINI RESPONSE (FIXED)
 # =========================
 def generate_guidance(user_input, shloka, meaning):
     if not client:
@@ -115,14 +119,26 @@ Explain simply and give practical advice in under 100 words.
             contents=prompt
         )
 
-        return response.text
+        # ✅ SAFE EXTRACTION
+        try:
+            if hasattr(response, "text") and response.text:
+                return response.text
+        except Exception:
+            pass
+
+        try:
+            return response.candidates[0].content.parts[0].text
+        except Exception as parse_error:
+            print("❌ Parsing Error:", str(parse_error))
+            print("🔍 Raw response:", response)
+            return "AI guidance parsing failed."
 
     except Exception as e:
-        print("❌ Gemini Error:", e)
+        print("❌ Gemini Error:", str(e))
         return "AI guidance temporarily unavailable."
 
 # =========================
-# HEALTH CHECK ROUTE
+# HEALTH CHECK
 # =========================
 @app.route("/")
 def home():
@@ -163,7 +179,7 @@ def chat():
         })
 
     except Exception as e:
-        print("❌ Server Error:", e)
+        print("❌ Server Error:", str(e))
         return jsonify({"error": "Server failed"}), 500
 
 # =========================
