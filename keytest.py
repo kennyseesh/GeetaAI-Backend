@@ -1,8 +1,16 @@
 from google import genai
 
-import os
+client = genai.Client(api_key="AIzaSyDjPYkCic5fpzEnSQV6RKLeXFGs5Xc2rPE")
 
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+try:
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents="Say hello in one sentence."
+    )
 
-for m in client.models.list():
-    print(m.name)
+    print("✅ SUCCESS:")
+    print(response.text)
+
+except Exception as e:
+    print("❌ ERROR:")
+    print(e)

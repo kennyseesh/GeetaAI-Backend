@@ -113,7 +113,7 @@ Explain simply and give practical advice in under 100 words.
 """
 
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-1.5-flash",
             contents=prompt
         )
 
