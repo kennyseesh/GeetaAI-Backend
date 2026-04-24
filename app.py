@@ -95,6 +95,7 @@ def get_best(user_input):
 # GEMINI (FINAL FIX)
 # =========================
 def generate_guidance(user_input, shloka, meaning):
+    print("🚨 MODEL USED:", "gemini-1.5-flash")
     if not client:
         return "AI service not available (missing API key)."
 
