@@ -138,8 +138,7 @@ Explain simply and give practical advice in under 100 words.
 
     except Exception as e:
         print(" GEMINI ERROR:", repr(e))
-        return "AI temporarily unavailable."
-
+        return f"AI error: {str(e)}"
 
 # HEALTH
 
