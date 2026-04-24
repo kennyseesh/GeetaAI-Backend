@@ -1,17 +1,18 @@
 import os
 import json
+import random
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from google import genai
 
-print("🚀 App starting...")
+print(" App starting...")
 
 app = Flask(__name__)
 CORS(app)
 
-# =========================
+
 # GEMINI INIT
-# =========================
+
 api_key = os.getenv("GEMINI_API_KEY")
 print("🔑 API KEY PRESENT:", bool(api_key))
 
@@ -25,9 +26,8 @@ if api_key:
 else:
     print("❌ No API key found")
 
-# =========================
 # LOAD JSON
-# =========================
+
 print("🔄 Loading JSON data...")
 
 data = []
@@ -44,25 +44,29 @@ try:
 except Exception as e:
     print("❌ JSON LOAD ERROR:", repr(e))
 
-# =========================
-# RULES
-# =========================
+
+# RULES (expanded)
+
 def detect_concepts(user_input):
     user_input = user_input.lower()
     scores = {}
 
     if any(w in user_input for w in ["duty", "responsibility"]):
         scores["dharma"] = 1
-    if any(w in user_input for w in ["confused", "lost", "depressed"]):
+    if any(w in user_input for w in ["confused", "lost", "depressed", "sad"]):
         scores["mind"] = 1
     if any(w in user_input for w in ["fear", "afraid", "anxiety"]):
         scores["fear"] = 1
+    if any(w in user_input for w in ["anger", "rage"]):
+        scores["anger"] = 1
+    if any(w in user_input for w in ["failure", "loss"]):
+        scores["detachment"] = 1
 
     return scores
 
-# =========================
-# SEARCH
-# =========================
+
+# SEARCH (FIXED)
+
 def get_best(user_input):
     if not data:
         return None
@@ -70,8 +74,7 @@ def get_best(user_input):
     user_input = user_input.lower()
     rule_scores = detect_concepts(user_input)
 
-    best_row = None
-    best_score = -1
+    scored = []
 
     for row in data:
         concepts = [
@@ -85,19 +88,24 @@ def get_best(user_input):
 
         score = rule + keyword_bonus
 
-        if score > best_score:
-            best_score = score
-            best_row = row
+        # break repetition
+        score += random.uniform(0, 0.3)
 
-    return best_row if best_row else data[0]
+        scored.append((score, row))
 
-# =========================
-# GEMINI (FINAL FIX)
-# =========================
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    #  pick randomly from top 3
+    top_k = scored[:3]
+
+    return random.choice(top_k)[1]
+
+
+# GEMINI RESPONSE (FIXED)
+
 def generate_guidance(user_input, shloka, meaning):
-    print("🚨 MODEL USED:", "gemini-1.5-flash")
     if not client:
-        return "AI service not available (missing API key)."
+        return "AI service not available."
 
     try:
         prompt = f"""
@@ -114,36 +122,27 @@ Explain simply and give practical advice in under 100 words.
 """
 
         response = client.models.generate_content(
-            model="gemini-2.5-pro",
+            model="gemini-2.5-flash",
             contents=prompt
         )
 
-        print("🔍 RAW RESPONSE:", response)
-
-        # ✅ METHOD 1 (best case)
+        # best case
         if hasattr(response, "text") and response.text:
             return response.text.strip()
 
-        # ✅ METHOD 2 (fallback parsing)
+        #  fallback parsing
         try:
-            candidates = response.candidates
-            if candidates and len(candidates) > 0:
-                parts = candidates[0].content.parts
-                if parts and len(parts) > 0:
-                    return parts[0].text.strip()
-        except Exception as parse_err:
-            print("❌ Parsing error:", repr(parse_err))
-
-        # ❌ if nothing works
-        return "AI returned empty response."
+            return response.candidates[0].content.parts[0].text.strip()
+        except Exception:
+            return "AI returned no readable output."
 
     except Exception as e:
-        print("❌ GEMINI FULL ERROR:", repr(e))
-        return f"AI error: {str(e)}"
+        print(" GEMINI ERROR:", repr(e))
+        return "AI temporarily unavailable."
 
-# =========================
+
 # HEALTH
-# =========================
+
 @app.route("/")
 def home():
     return jsonify({
@@ -152,9 +151,9 @@ def home():
         "gemini": bool(client)
     })
 
-# =========================
+
 # CHAT
-# =========================
+
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
@@ -186,9 +185,9 @@ def chat():
         print("❌ SERVER ERROR:", repr(e))
         return jsonify({"error": "Server failed"}), 500
 
-# =========================
+
 # RUN
-# =========================
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
